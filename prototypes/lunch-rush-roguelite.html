@@ -1,0 +1,1155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Lunch Rush Roguelite</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Barlow+Condensed:wght@500;600;700&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+/* Layout: one-screen line-cook view (seats/tickets, station, board) plus a paper "order pad" sheet for the between-shift screens. Deliberate single dark kitchen look. */
+:root{
+  --steel:#1a2026; --steel-2:#232b33; --steel-3:#2e3842; --rail:#55626e;
+  --text:#e8edf1; --muted:#8e9ca8;
+  --paper:#fbf6df; --paper-2:#f1e9c8; --ink:#2a2418; --ink-soft:#7a705c; --red:#c2361f; --red-dk:#7d2212;
+  --flame:#5aaaff; --heat:#ff8c2b; --danger:#ff4f4f; --ok:#5fd36b; --gold:#ffcf3a; --green-ink:#2c7a35;
+  --display:"Bungee", "Impact", system-ui, sans-serif;
+  --body:"Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --print:"Courier Prime", "Courier New", monospace;
+  --s:48px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--steel);color:var(--text)}
+body{font-family:var(--body);font-size:16px;padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px));padding-block:6px;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#app{max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:6px;position:relative}
+button{font:inherit;color:inherit}
+button:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
+
+/* HUD */
+.hud{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.day{display:flex;flex-direction:column;line-height:1}
+.day b{font-family:var(--display);font-weight:400;font-size:16px;color:var(--gold)}
+.day small{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:700}
+.goal{display:flex;flex-direction:column;gap:3px;min-width:0}
+.goal .row{display:flex;justify-content:space-between;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-variant-numeric:tabular-nums}
+.goal .row b{color:var(--text);font-size:14px}
+.gbar{height:8px;background:var(--steel-3);border-radius:4px;overflow:hidden;position:relative}
+.gbar i{position:absolute;inset:0 auto 0 0;background:var(--heat);transition:width .3s}
+.gbar.met i{background:var(--ok)}
+.hud-r{display:flex;gap:8px;align-items:center}
+.clock{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums}
+.mute{background:var(--steel-3);border:0;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:14px}
+.chips{display:flex;gap:5px;flex-wrap:wrap;min-height:20px;align-items:center;justify-content:center}
+.chip{font-size:12px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:10px;background:var(--steel-3);color:var(--text);white-space:nowrap}
+.chip.warn{background:#5a1c1c;color:#ffc4c4}
+.chip.good{background:#1f4a28;color:#bdf3c4}
+.chip.boss{background:#4a3a12;color:var(--gold)}
+.closebtn{border:0;border-radius:10px;background:var(--ok);color:#0f2a14;font-weight:700;font-size:12px;letter-spacing:.4px;padding:3px 10px;cursor:pointer;animation:pulse 1s infinite}
+.chip.obj{background:#2b3a4a;color:#d6e6f5}.chip.obj.done{background:#1f4a28;color:#bdf3c4}.chip.obj.fail{background:#4a2424;color:#f3bdbd}
+.stars-big{font-size:34px;letter-spacing:4px;color:#d5a312}
+.toast{flex:1 1 100%;text-align:center;font-size:13px;font-weight:600;color:var(--heat);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s;min-height:16px;line-height:16px}
+
+/* seats */
+.rail{background:linear-gradient(var(--rail),#3d4752);border-radius:6px;padding:5px 5px 4px;box-shadow:inset 0 2px 0 rgba(255,255,255,.12);display:flex;flex-direction:column;gap:4px}
+.tickets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;height:108px}
+.ticket{background:var(--paper);color:var(--ink);border-radius:2px 2px 0 0;padding:3px 4px 7px;display:flex;flex-direction:column;gap:2px;cursor:pointer;position:relative;overflow:hidden;min-width:0;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 5px),88% 100%,75% calc(100% - 5px),62% 100%,50% calc(100% - 5px),38% 100%,25% calc(100% - 5px),12% 100%,0 calc(100% - 5px));animation:drop .35s ease-out}
+.ticket .top{display:flex;align-items:center;gap:3px;min-height:18px}
+.ticket .face{font-size:16px;line-height:1}
+.ticket .who{font-family:var(--print);font-size:9px;font-weight:700;line-height:1;text-transform:uppercase;color:var(--ink-soft)}
+.ticket .nm{font-family:var(--print);font-weight:700;font-size:11px;line-height:1.05;text-transform:uppercase}
+.ticket .items{display:flex;flex-wrap:wrap;gap:1px;font-size:17px;line-height:1.1}
+.ticket .items span.miss{filter:grayscale(1);opacity:.3}
+.ticket.multi .items{font-size:12px}
+.ticket .dish.done{opacity:.35;text-decoration:line-through}
+.ticket .dish.done .items::after{content:" ✓";font-size:12px;color:var(--green-ink)}
+.ticket .bar{margin-top:auto;height:5px;background:#e3dcc2;border-radius:3px;overflow:hidden;flex:none}
+.ticket .bar i{display:block;height:100%;background:var(--ok)}
+.ticket.ready{box-shadow:0 0 0 3px var(--ok);animation:jiggle 1.2s infinite}
+.ticket.ready::after{content:"SERVE";position:absolute;right:2px;top:2px;font-family:var(--display);font-size:9px;color:#fff;background:#2c9a3a;padding:1px 3px;border-radius:2px;transform:rotate(6deg)}
+.ticket.t-grumpy{background:#f6dcd4}
+.ticket.t-tipper{background:linear-gradient(#fff3c2,#f6e08c)}
+.ticket.t-influencer{background:#f3dcf6}
+.ticket.t-critic{background:#2a2418;color:var(--paper)}
+.ticket.t-critic .who,.ticket.t-critic .nm{color:#d9cfa8}
+.ticket.angry{animation:shake .35s}
+.seat-empty,.seat-locked{border:1px dashed rgba(255,255,255,.2);border-radius:3px;display:grid;place-items:center;color:rgba(255,255,255,.3);font-family:var(--print);font-size:11px;text-align:center;line-height:1.2}
+.seat-locked{border-style:solid;border-color:rgba(255,255,255,.08);background:rgba(0,0,0,.12)}
+.queue{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#d5dde3;min-height:22px;padding-left:2px}
+.qchip{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:14px;background:var(--steel-2);border:2px solid var(--ok)}
+
+/* station */
+.station{display:grid;gap:6px;grid-template-columns:1fr 1.2fr auto}
+.station.nogrill{grid-template-columns:1fr auto}
+.panel{background:var(--steel-2);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:1.3px;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;gap:6px}
+.grill{display:grid;gap:5px}
+.grill.ablaze{animation:pulse .6s infinite}
+.gslot{border:0;border-radius:6px;background:#14191e;height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;position:relative;overflow:hidden;background-image:repeating-linear-gradient(90deg,transparent 0 8px,#2a333b 8px 11px);padding:0}
+.gslot .em{font-size:19px;line-height:1}
+.gslot .tx{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);line-height:1.05;text-align:center}
+.gslot .pg{position:absolute;left:0;bottom:0;height:4px;background:var(--flame)}
+.gslot.ready{box-shadow:0 0 0 3px var(--gold);animation:jiggle 1s infinite} .gslot.ready .tx{color:var(--gold)}
+.gslot.smoking{box-shadow:0 0 0 3px var(--danger);animation:pulse .5s infinite,jiggle .45s infinite} .gslot.smoking .tx{color:var(--heat)}
+.gslot.burnt{box-shadow:0 0 0 2px #6b5a4a} .gslot.burnt .tx{color:#d8c3a8}
+.gslot.fire{background:#5b1a10;box-shadow:0 0 0 3px var(--danger)} .gslot.fire .em{animation:flick .25s infinite alternate} .gslot.fire .tx{color:#ffd0c6}
+.gslot.paused{opacity:.45}
+.pantry{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.pitem{background:#14191e;border-radius:6px;padding:3px 2px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.pitem .em{font-size:16px;line-height:1}
+.pips{display:flex;gap:2px}
+.pips i{width:6px;height:6px;border-radius:50%;background:#33404b}
+.pips i.on{background:var(--gold)}
+.pitem.full .pips i.on{background:var(--heat)}
+.pitem.flash{animation:flash .45s}
+.abils{display:flex;flex-direction:column;gap:5px;justify-content:flex-start}
+.ab{width:52px;height:52px;border:0;border-radius:8px;background:var(--steel-3);position:relative;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:hidden;padding:0}
+.ab .em{font-size:20px;line-height:1;position:relative}
+.ab .tx{font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);position:relative}
+.ab .cdv{position:absolute;inset:0;background:conic-gradient(rgba(10,14,18,.78) calc(var(--p,0)*1turn),transparent 0)}
+.ab.ready{box-shadow:0 0 0 2px var(--gold)}
+.ab.armed{box-shadow:0 0 0 3px var(--flame);animation:pulse .6s infinite}
+.ab.empty{background:transparent;border:1px dashed rgba(255,255,255,.15);cursor:default}
+
+/* board */
+.boardwrap{background:var(--steel-2);border-radius:10px;padding:4px;transition:box-shadow .3s}
+.boardwrap.patty{box-shadow:0 0 0 3px var(--gold);animation:edge 1s infinite}
+.boardwrap.burning{box-shadow:0 0 0 4px var(--danger);animation:edge .35s infinite}
+.boardwrap.armed{box-shadow:0 0 0 3px var(--flame);animation:none}
+@keyframes edge{50%{box-shadow:0 0 0 3px transparent}}
+.timebar{height:6px;background:var(--steel-3);border-radius:3px;overflow:hidden;margin:0 2px 4px}
+.timebar i{display:block;height:100%;background:var(--flame);transition:background .3s}
+.timebar.low i{background:var(--danger);animation:pulse .5s infinite}
+.clock.low{color:var(--danger)}
+.ab.suggest{animation:nudge .8s infinite}
+.tile.hint>span{animation:wiggle .6s 3}
+@keyframes jiggle{0%,40%,100%{transform:none}6%{transform:rotate(-4deg) scale(1.04)}14%{transform:rotate(4deg) scale(1.04)}22%{transform:rotate(-3deg)}30%{transform:rotate(2deg)}}
+@keyframes nudge{50%{transform:scale(1.08);box-shadow:0 0 0 4px var(--gold)}}
+@keyframes wiggle{25%{transform:rotate(-12deg) scale(1.1)}75%{transform:rotate(12deg) scale(1.1)}}
+#board{position:relative;width:calc(var(--s)*6);height:calc(var(--s)*6);margin:0;flex:none;touch-action:none;border-radius:6px;overflow:hidden;cursor:pointer;
+  background:conic-gradient(#1f262d 25%,#1b2127 0 50%,#1f262d 0 75%,#1b2127 0) 0 0/calc(var(--s)*2) calc(var(--s)*2)}
+.tile{position:absolute;left:0;top:0;width:var(--s);height:var(--s);padding:3px;transition:transform .14s cubic-bezier(.3,1.2,.6,1);will-change:transform}
+.tile>span{display:grid;place-items:center;width:100%;height:100%;border-radius:22%;font-size:calc(var(--s)*.54);line-height:1;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25),inset 0 2px 0 rgba(255,255,255,.25);transition:transform .15s,filter .3s,opacity .18s}
+.t-tomato>span{background:#d9443a}.t-lettuce>span{background:#4fae3e}.t-cheese>span{background:#eebd2a}
+.t-patty>span{background:#8e4a2c}.t-bread>span{background:#cf8f45}.t-onion>span{background:#9a62c0}.t-egg>span{background:#4f8fb8}
+.tile.sel>span{transform:scale(1.12);box-shadow:0 0 0 3px #fff,inset 0 -3px 0 rgba(0,0,0,.25)}
+.tile.aging>span{filter:saturate(.45) brightness(.8)}
+.tile.mould>span{background:#4e5a3e;filter:none;font-size:calc(var(--s)*.46);box-shadow:inset 0 0 0 2px #6c7a52}
+.tile.fire>span{background:#c4361a;animation:flick .22s infinite alternate}
+.tile.puff>span{transform:scale(.8)}
+.tile.pop>span{transform:scale(1.35);opacity:0}
+.tile.nope>span{animation:shake .3s}
+
+.boardrow{display:flex;gap:6px;justify-content:center;align-items:stretch}
+.sink{width:calc(var(--s)*1.25);flex:none;border:0;border-radius:8px;background:#14191e;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;cursor:pointer;color:var(--text);touch-action:manipulation;position:relative}
+.sink .lab{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.sink .clean{font-family:var(--display);font-size:15px;line-height:1}
+.sink .dirty{flex:1;display:flex;flex-direction:column-reverse;align-items:center;font-size:calc(var(--s)*.42);line-height:.62;overflow:hidden;width:100%;padding-bottom:4px}
+.sink .dirty .d{filter:sepia(1) saturate(2.5) hue-rotate(-15deg) brightness(.7)}
+.sink .dirty small{font-size:11px;line-height:1.2;color:var(--muted)}
+.sink .scrub{height:6px;width:80%;background:var(--steel-3);border-radius:3px;overflow:hidden}
+.sink .scrub i{display:block;height:100%;background:var(--flame);transition:width .1s}
+.sink.busy{box-shadow:0 0 0 2px var(--flame)}
+.sink.empty{box-shadow:0 0 0 3px var(--danger);animation:edge .5s infinite}
+.sink:active{transform:scale(.97)}
+.lock{position:absolute;inset:0;z-index:25;background:rgba(14,18,22,.6);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:var(--display);font-size:20px;line-height:1.2;color:var(--gold);border-radius:8px}
+.float{position:absolute;z-index:15;font-family:var(--display);font-size:17px;color:var(--gold);pointer-events:none;animation:floatUp 1s forwards;text-shadow:0 2px 0 rgba(0,0,0,.5);white-space:nowrap}
+.float.bad{color:var(--danger)}
+#app.shake{animation:shake .35s}
+
+/* between-shift sheets */
+.screen{position:fixed;inset:0;z-index:30;background:rgba(14,18,22,.88);overflow-y:auto;display:flex;justify-content:center;
+  padding:max(14px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(14px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.sheet{width:min(420px,100%);margin:auto 0;background:var(--paper);color:var(--ink);border-radius:3px;padding:18px 16px 16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.sheet h1{font-family:var(--display);font-weight:400;font-size:32px;line-height:.95;margin:0;color:var(--red);text-wrap:balance}
+.sheet h2{font-family:var(--display);font-weight:400;font-size:16px;margin:0;color:var(--ink);letter-spacing:.3px}
+.sheet p{margin:0;font-size:16px;line-height:1.3}
+.eyebrow{font-family:var(--print);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ink-soft)}
+.go{background:var(--red);color:#fff;border:0;border-radius:4px;padding:12px;font-family:var(--display);font-size:17px;cursor:pointer;box-shadow:0 4px 0 var(--red-dk)}
+.go:active{transform:translateY(3px);box-shadow:0 1px 0 var(--red-dk)}
+.go.alt{background:var(--paper-2);color:var(--ink);box-shadow:0 4px 0 #c9bd8f}
+.cal{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.cd{border:1.5px solid #d7cca2;border-radius:4px;padding:5px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;background:#fffbea;position:relative}
+.cd b{font-family:var(--print);font-size:12px}
+.cd span{font-size:19px;line-height:1.1}
+.cd small{font-family:var(--print);font-size:11px;color:var(--ink-soft)}
+.cd.now{border-color:var(--red);box-shadow:0 0 0 2px var(--red)}
+.cd.past{opacity:.45}
+.cd.past::after{content:"✓";position:absolute;top:1px;right:4px;font-weight:700;color:var(--green-ink)}
+.rule{background:var(--paper-2);border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.rule .h{font-family:var(--display);font-size:14px;color:var(--red)}
+.menu{display:flex;flex-direction:column;gap:4px;font-family:var(--print);font-size:14px}
+.menu .m{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;border-bottom:1px dashed #d7cca2;padding:3px 0}
+.menu .m .ic{font-size:16px;letter-spacing:1px}
+.big{font-family:var(--display);font-size:44px;line-height:1;color:var(--green-ink)}
+.big.fail{color:var(--red)}
+.recap{font-family:var(--print);font-size:14px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+.cards{display:flex;flex-direction:column;gap:8px}
+.card{border:1.5px solid #d7cca2;border-radius:5px;padding:9px 10px;display:grid;grid-template-columns:34px 1fr auto;gap:4px 10px;align-items:center;background:#fffbea}
+.card .ic{font-size:24px;grid-row:span 2;text-align:center}
+.card .nm{font-weight:700;font-size:17px;line-height:1.1}
+.card .tag{font-family:var(--print);font-size:11px;color:var(--ink-soft);text-transform:uppercase}
+.card .ds{grid-column:2 / 4;font-size:14px;line-height:1.25;color:#4a4232}
+.card .buy{grid-row:span 2;border:0;border-radius:4px;background:var(--red);color:#fff;font-family:var(--display);font-size:15px;padding:8px 10px;cursor:pointer;min-width:58px}
+.card .buy:disabled{background:#cfc6a6;color:#8a8168;cursor:default}
+.card.sold{opacity:.4}
+.card.pick{cursor:pointer}
+.card.pick:hover,.card.pick:focus-visible{border-color:var(--red)}
+.wallet{display:flex;justify-content:space-between;align-items:baseline}
+.wallet b{font-family:var(--display);font-size:26px;font-weight:400;color:var(--green-ink)}
+.owned{display:flex;flex-wrap:wrap;gap:6px}
+.own{font-size:13px;background:var(--paper-2);border-radius:12px;padding:3px 9px;display:flex;gap:6px;align-items:center}
+.own button{border:0;background:none;color:var(--red);font-weight:700;cursor:pointer;padding:0;font-size:12px;text-decoration:underline}
+.row2{display:flex;gap:8px}
+.row2>*{flex:1}
+.small{font-size:13px;color:var(--ink-soft);line-height:1.3}
+
+@keyframes drop{from{transform:translateY(-30px);opacity:0}}
+@keyframes shake{25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+@keyframes pulse{50%{opacity:.6}}
+@keyframes flick{from{filter:brightness(1)}to{filter:brightness(1.35) saturate(1.3)}}
+@keyframes flash{40%{transform:scale(1.15);background:#3b4a1f}}
+@keyframes floatUp{to{transform:translateY(-40px);opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01ms!important}}
+@media (max-width:370px){.ticket .items{font-size:15px}.ab{width:46px;height:46px}}
+</style>
+
+<div id="app">
+  <div class="hud">
+    <div class="day"><b id="dayName">Mon</b><small id="dayTag">Quiet start</small></div>
+    <div class="goal">
+      <div class="row"><span>Takings</span><span style="white-space:nowrap"><b id="earned">$0</b> / <span id="target">$12</span></span></div>
+      <div class="gbar" id="gbar"><i id="gfill" style="width:0"></i></div>
+    </div>
+    <div class="hud-r"><span class="clock" id="clock">0:40</span><button class="mute" id="pause" aria-label="Pause">⏸</button><button class="mute" id="mute" aria-label="Toggle sound">🔊</button></div>
+  </div>
+  <div class="chips"><span id="chips" style="display:contents"></span><button class="closebtn" id="closeBtn" hidden>Close early</button><div class="toast" id="toast">&nbsp;</div></div>
+
+  <div class="rail">
+    <div class="tickets" id="tickets"></div>
+    <div class="queue" id="queue"></div>
+  </div>
+
+  <div class="station" id="station">
+    <div class="panel" id="grillPanel">
+      <div class="label"><span id="grillLabel">Grill</span></div>
+      <div class="grill" id="grill"></div>
+    </div>
+    <div class="panel">
+      <div class="label"><span>Pantry</span><span id="capLabel">max 3</span></div>
+      <div class="pantry" id="pantry"></div>
+    </div>
+    <div class="abils" id="abils"></div>
+  </div>
+
+  <div class="boardwrap" id="boardwrap"><div class="timebar" id="timebar"><i id="timefill" style="width:100%"></i></div><div class="boardrow"><div id="board"></div><button class="sink" id="sink" aria-label="Sink: tap to scrub a dirty plate"><span class="lab">Clean</span><span class="clean" id="cleanN">🍽️ 4</span><span class="lab">Dirty</span><span class="dirty" id="dirtyStack"></span><span class="scrub" id="scrub"><i style="width:0"></i></span><span class="lab">Tap to scrub</span></button></div></div>
+  <div class="lock" id="lock" hidden></div>
+</div>
+<div class="screen" id="screen"></div>
+
+<script>
+/* ================= DATA ================= */
+const ING={
+  bread:{e:'🍞',name:'Bread'}, cheese:{e:'🧀',name:'Cheese'}, tomato:{e:'🍅',name:'Tomato',spoils:1},
+  lettuce:{e:'🥬',name:'Lettuce',spoils:1}, patty:{e:'🥩',cooked:'🍖',name:'Patty',grill:1},
+  onion:{e:'🧅',name:'Onion'}, egg:{e:'🥚',name:'Egg'},
+};
+const STAPLES=['bread','cheese','tomato','lettuce'];
+const RECIPES={
+  toastie:{name:'Cheese Toastie',items:['bread','cheese'],price:3},
+  tomtoast:{name:'Tomato Toastie',items:['bread','cheese','tomato'],price:5},
+  eggroll:{name:'Egg Roll',items:['bread','egg'],price:4},
+  salad:{name:'Garden Salad',items:['lettuce','tomato','onion'],price:5},
+  omelette:{name:'Cheese Omelette',items:['egg','egg','cheese'],price:6},
+  burger:{name:'Cheeseburger',items:['bread','patty','cheese'],price:7},
+  smash:{name:'Onion Smash',items:['bread','patty','onion'],price:7},
+  brekkie:{name:'Big Brekkie',items:['bread','egg','tomato','patty'],price:10},
+  deluxe:{name:'The Deluxe',items:['bread','patty','lettuce','tomato'],price:10},
+  double:{name:'Double Stack',items:['bread','patty','patty','cheese'],price:11},
+};
+const DAYS=[
+  {short:'Mon',name:'Monday',tag:'Quiet start',icon:'🍞',target:12,len:40,iv:[5,4],rules:{},
+   rule:'A gentle first shift. Match ingredients to stock the pantry, then tap a green ticket to serve it. Every dish needs a clean plate, and plates come back dirty: tap the sink to scrub them. Faster service means bigger tips.'},
+  {short:'Tue',name:'Tuesday',tag:'Fresh produce',icon:'🦠',target:28,len:50,iv:[6,4.5],rules:{spoil:1,grumpy:.15},
+   rule:'Lettuce and tomato now fade, then turn to mould 🦠. Mould never matches, but you can swap it out of the way. Make a match right next to it to bin it. Grumpy customers 😠 start showing up too: short patience, double tips.'},
+  {short:'Wed',name:'Wednesday',tag:'Grease fires',icon:'🔥',target:52,len:60,iv:[6,4.5],rules:{spoil:1,fire:1,grumpy:.15,influencer:1},
+   rule:'Fire is on. A patty left too long sets the grill alight, and a burning grill stops cooking until you tap the flames out. Grease flare-ups light board tiles, and fire spreads. Influencers 🤳 may drop by: they order the whole menu and pay nothing, but serve them and you go viral.'},
+  {short:'Thu',name:'Thursday',tag:'Lunch rush',icon:'🏃',target:85,len:70,iv:[5.2,3.6],rules:{spoil:1,fire:1,grumpy:.28,influencer:1,rush:1},
+   rule:'The rush hits. Customers arrive faster with less patience, and more of them are grumpy.'},
+  {short:'Fri',name:'Friday',tag:'Boss day',icon:'⭐',target:130,len:80,iv:[5.5,4],rules:{spoil:1,fire:1,grumpy:.2,influencer:1,boss:1}},
+];
+const BOSSES={
+  critic:{name:'Food critic',icon:'🧐',rule:'The food critic arrives early and orders one of every dish on your menu. Their review multiplies everything you earn today, from ×0.5 for a walkout up to ×3 for fast service.'},
+  inspector:{name:'Health inspector',icon:'📋',rule:'The health inspector checks your kitchen every 15 seconds. Each check freezes your kitchen for 2 seconds. Any mould, fire, burnt patty or a pile of 4+ dirty plates earns a strike. Three strikes and you\'re shut down. A spotless check pays $3.'},
+};
+const ABILITIES={
+  prep:{name:'Pre-prepped',e:'🥫',cd:40,price:8,desc:'Adds 1 ingredient the oldest ticket is missing. Patties come already cooked.'},
+  warden:{name:'Fire warden',e:'🧯',cd:30,price:6,desc:'Puts out every fire on the board and the grill.'},
+  cleaner:{name:'Professional cleaner',e:'🧽',cd:30,price:7,desc:'Tap it, then tap a tile: every tile of that kind is cleared. Works on mould and fire too.'},
+  freeze:{name:'Rush hour',e:'⏸️',cd:40,price:6,desc:'Customers stop losing patience for 6 seconds.'},
+  ladle:{name:'Lucky ladle',e:'🥄',cd:20,price:5,desc:'Scoops 3 random tiles of one menu ingredient and gives you 1. Could be exactly what you need.'},
+};
+const RELICS={
+  dishwasher:{name:'Dishwasher',e:'🫧',price:7,desc:'Washes one dirty plate every 6 seconds.'},
+  plates:{name:'Extra plate set',e:'🍽️',price:4,desc:'Start each shift with 2 more clean plates.'},
+  grill3:{name:'Third grill slot',e:'♨️',price:7,needs:'patty',desc:'Cook three patties at once.'},
+  pantry:{name:'Walk-in fridge',e:'🧊',price:6,desc:'Pantry holds 4 of each ingredient instead of 3.'},
+  lamp:{name:'Heat lamp',e:'💡',price:5,needs:'patty',desc:'Cooked patties stay ready twice as long before burning.'},
+  loyalty:{name:'Loyalty card',e:'💳',price:6,desc:'20% chance a happy customer orders again straight away.'},
+  decor:{name:'Fancy décor',e:'🕯️',price:5,desc:'Big tippers 🎩 show up three times as often.'},
+  flame:{name:'Flame grilled',e:'🍖',price:6,needs:'patty',desc:'Fire tiles count as meat in a match with at least 2 patties, and the fire is cleared.'},
+  turbo:{name:'Turbo grill',e:'⚡',price:4,needs:'patty',catchy:1,desc:'Patties cook twice as fast, but burn twice as fast.'},
+};
+const UPGRADES={
+  double:{name:'Double harvest',price:5,desc:'20% chance each {ing} match gives one extra.'},
+  quality:{name:'Better quality',price:5,desc:'Every dish using {ing} pays $1 more per {ing}.'},
+  bulk:{name:'Bulk buy',price:4,desc:'4-matches of {ing} give 3 instead of 2.'},
+  fresh:{name:'Fresh stock',price:3,spoilOnly:1,desc:'{ing} never goes off.'},
+};
+const SLOT_PRICE=[0,1,2,3], SEAT_PRICE=[0,0,1,2];
+const starPrice=o=>o.kind==='upg'?1:o.kind==='ability'?2:(RELICS[o.id].catchy||o.id==='decor'||o.id==='plates'?1:2);
+const ST=n=>n+'★';
+const OBJ_SERVE=[5,7,9,11,13], OBJ_EARLY=[10,12,15,15,15];
+const OBJ={
+  nowalk:{ok:()=>true,desc:()=>'Nobody walks out',prog:()=>K.walkouts?'✗':'✓ so far',done:()=>K.walkouts===0},
+  streak:{ok:()=>true,desc:d=>`Reach a streak of ${3+d}`,prog:d=>`${Math.min(K.best,3+d)}/${3+d}`,done:d=>K.best>=3+d},
+  serve:{ok:()=>true,desc:d=>`Serve ${OBJ_SERVE[d]} orders`,prog:d=>`${Math.min(K.served,OBJ_SERVE[d])}/${OBJ_SERVE[d]}`,done:d=>K.served>=OBJ_SERVE[d]},
+  early:{ok:()=>true,desc:d=>`Hit the target with ${OBJ_EARLY[d]}s to spare`,prog:d=>K.metLeft==null?'not yet':K.metLeft>=OBJ_EARLY[d]?'✓':'✗',done:d=>K.metLeft!=null&&K.metLeft>=OBJ_EARLY[d]},
+  every:{ok:()=>R.menu.length>=2,desc:()=>'Serve every dish on the menu',prog:()=>`${K.dishSet.size}/${R.menu.length}`,done:()=>R.menu.every(k=>K.dishSet.has(k))},
+  noburn:{ok:()=>menuIngs().has('patty'),desc:()=>'Plate 3 patties and burn none',prog:()=>K.burnt?'✗':`${Math.min(K.plated,3)}/3`,done:()=>K.plated>=3&&!K.burnt},
+  clean:{ok:d=>!!DAYS[d].rules.spoil,desc:()=>'Finish with no mould on the board',prog:()=>{const m=grid.flat().filter(t=>t&&t.state==='mould').length;return m?m+' 🦠':'✓ so far'},done:()=>!grid.flat().some(t=>t&&t.state==='mould')},
+  five:{ok:()=>true,desc:()=>'Make a 5-match',prog:()=>K.five?'✓':'not yet',done:()=>K.five},
+  cascade:{ok:()=>true,desc:()=>'Trigger a 3-step cascade',prog:()=>`${Math.min(K.maxChain,3)}/3`,done:()=>K.maxChain>=3},
+  noab:{ok:()=>R.abilities.length>0,desc:()=>'Use no abilities',prog:()=>K.usedAb?'✗':'✓ so far',done:()=>!K.usedAb},
+};
+const OBJ_SHORT={nowalk:'No walkouts',streak:'Streak',serve:'Served',early:'Spare time',every:'Dishes',noburn:'Patties',clean:'Mould-free',five:'5-match',cascade:'Cascade',noab:'No abilities'};
+function objState(){const O=OBJ[R.obj];if(!O||!K.dishSet)return'';const done=O.done(R.day),failed=/✗/.test(O.prog(R.day));return done?'done':failed?'fail':''}
+const FACES=['🧑','👩','👨','🧓','👱','🧔','👵','👦'];
+
+/* ================= HELPERS ================= */
+const $=id=>document.getElementById(id);
+const rnd=a=>a[Math.floor(Math.random()*a.length)];
+const shuffleArr=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const lerp=(a,b,t)=>a+(b-a)*Math.max(0,Math.min(1,t));
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const fmt=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const app=$('app'), boardEl=$('board');
+
+/* ================= AUDIO ================= */
+let actx=null, muted=false;
+function beep(f,d=.08,type='square',v=.05,delay=0){
+  if(!actx||muted)return;
+  const t=actx.currentTime+delay,o=actx.createOscillator(),g=actx.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+  o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+.02);
+}
+const sfx={
+  match:n=>beep(440+n*80,.07,'triangle',.06), serve:()=>{beep(988,.12,'sine',.08);beep(1319,.25,'sine',.08,.1)},
+  bad:()=>beep(120,.18,'sawtooth',.05), done:()=>{beep(660,.06,'square',.04);beep(660,.06,'square',.04,.1)},
+  alarm:()=>{for(let i=0;i<3;i++)beep(880,.1,'square',.06,i*.18)}, puff:()=>beep(200,.06,'triangle',.05),
+  bell:()=>beep(1200,.05,'square',.03),
+  ready:()=>{beep(1760,.09,'triangle',.08);beep(1760,.22,'triangle',.07,.13)}, cash:()=>{beep(1568,.06,'square',.04);beep(2093,.12,'square',.04,.07)},
+};
+$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'🔇':'🔊'};
+let paused=false;
+function pause(){
+  if(!running||paused)return;paused=true;
+  showScreen(`<div class="eyebrow">${DAYS[R.day].name} · Paused</div><h1>Kitchen on hold</h1>
+    <p>${fmt(K.time)} left on the clock. You've taken $${K.earned} of today's $${DAYS[R.day].target} target.</p>
+    <button class="go" data-act="resume">Resume shift</button>
+    <button class="go alt" data-act="quit">Abandon this run</button>`);
+}
+function resume(){if(!paused)return;paused=false;hideScreen();last=performance.now()}
+$('pause').onclick=pause;
+$('closeBtn').onclick=()=>{if(!running)return;K.closedEarly=true;if(K.time>=20)K.bonus.push('Closed early with '+Math.floor(K.time)+'s left');endShift()};
+/* grill sizzle: looping filtered noise, volume follows what's on the grill */
+let sizzle=null,sizzleUntil=0;
+function sizzleNode(){
+  if(sizzle||!actx)return sizzle;
+  const len=actx.sampleRate*2,buf=actx.createBuffer(1,len,actx.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(Math.random()<.02?1:.35);
+  const src=actx.createBufferSource();src.buffer=buf;src.loop=true;
+  const hp=actx.createBiquadFilter();hp.type='highpass';hp.frequency.value=2800;
+  const g=actx.createGain();g.gain.value=0;
+  src.connect(hp).connect(g).connect(actx.destination);src.start();
+  sizzle={g,hp};return sizzle;
+}
+function updateSizzle(){
+  if(!actx)return;const s=sizzleNode();if(!s)return;
+  let v=0,hot=false;
+  if(running&&!paused&&!muted&&K&&K.grill){const fire=grillOnFire();
+    K.grill.forEach(g=>{if(g.state==='ready')v+=.012;else if(g.state==='smoking'){v+=.035;hot=true}else if(g.state==='fire'){v+=.02;hot=true}});
+    if(performance.now()<sizzleUntil)v=Math.max(v,.09)}
+  s.g.gain.setTargetAtTime(Math.min(v,.09),actx.currentTime,.08);
+  s.hp.frequency.setTargetAtTime(hot?1400:2800,actx.currentTime,.2);
+}
+
+/* ================= RUN STATE ================= */
+let R, K, running=false;
+let TYPES=[], MENU_INGS=new Set(), WEIGHTS=[];
+// drop weight = 1.5 + times the ingredient appears across menu recipes; unused filler = 1
+function computeWeights(){const occ={};R.menu.forEach(k=>RECIPES[k].items.forEach(i=>occ[i]=(occ[i]||0)+1));WEIGHTS=TYPES.map(t=>occ[t]?1.5+occ[t]:1)}
+function pickType(){let r=Math.random()*WEIGHTS.reduce((a,b)=>a+b,0);for(let i=0;i<TYPES.length;i++){r-=WEIGHTS[i];if(r<=0)return TYPES[i]}return TYPES[TYPES.length-1]}
+function newRun(){
+  R={day:0,wallet:0,menu:['toastie'],slots:1,seats:2,abilities:[],relics:{},upg:{},boss:Math.random()<.5?'critic':'inspector',
+     total:0,servedAll:0,hints:{},offers:null,reroll:2,draft:null};
+}
+const hasUpg=(ing,id)=>!!R.upg[ing+':'+id];
+const menuIngs=()=>new Set(R.menu.flatMap(k=>RECIPES[k].items));
+const cap=()=>R.relics.pantry?4:3;
+const priceScale=p=>p+Math.floor(R.day/2);
+function boardTypes(){
+  const t=[...menuIngs()];
+  for(const s of STAPLES){if(t.length>=4)break;if(!t.includes(s))t.push(s)}
+  return t;
+}
+function hint(key,msg){if(R.hints[key])return;R.hints[key]=1;toast(msg)}
+
+/* ================= BOARD ================= */
+const COLS=6, ROWS=6;
+let TS=48, grid=[], tileId=0, busy=false, sel=null;
+function makeTile(type,r,c){
+  const t={id:++tileId,type,state:'ok',age:0,spoilAt:24+Math.random()*12,hp:0,r,c};
+  t.el=document.createElement('div');t.el.innerHTML='<span></span>';boardEl.appendChild(t.el);visual(t);return t;
+}
+function visual(t){
+  const aging=t.state==='ok'&&t.age>t.spoilAt-7;
+  t.el.className='tile t-'+t.type+(t.state!=='ok'?' '+t.state:'')+(aging?' aging':'')+(sel===t?' sel':'')+(t.state==='ok'&&!MENU_INGS.has(t.type)?' filler':'');
+  t.el.firstChild.textContent=t.state==='mould'?'🦠':t.state==='fire'?'🔥':ING[t.type].e;
+}
+const place=t=>t.el.style.transform=`translate(${t.c*TS}px,${t.r*TS}px)`;
+const placeAll=()=>grid.forEach(row=>row.forEach(t=>t&&place(t)));
+function fill(){
+  boardEl.innerHTML='';grid=[];sel=null;
+  for(let r=0;r<ROWS;r++){grid.push([]);for(let c=0;c<COLS;c++){
+    let type;do{type=pickType()}while((c>1&&grid[r][c-1].type===type&&grid[r][c-2].type===type)||(r>1&&grid[r-1][c].type===type&&grid[r-2][c].type===type));
+    grid[r].push(makeTile(type,r,c));
+  }}
+  if(!hasMove())return fill();
+  placeAll();
+}
+const okAt=(r,c)=>{const t=grid[r]&&grid[r][c];return t&&t.state==='ok'?t:null};
+function keyOf(t){if(!t)return null;if(t.state==='ok')return t.type;if(t.state==='fire'&&R.relics.flame)return '*';return null}
+function lineRuns(cells,runs){
+  const keys=cells.map(keyOf), flame=!!R.relics.flame;
+  let i=0;
+  while(i<keys.length){const k=keys[i];let e=i+1;
+    if(k&&k!=='*'&&!(flame&&k==='patty')){while(e<keys.length&&keys[e]===k)e++;if(e-i>=3)runs.push({type:k,cells:cells.slice(i,e)})}
+    i=e}
+  if(flame){i=0;while(i<keys.length){
+    if(keys[i]==='patty'||keys[i]==='*'){let e=i,p=0;while(e<keys.length&&(keys[e]==='patty'||keys[e]==='*')){if(keys[e]==='patty')p++;e++}
+      if(e-i>=3&&p>=2)runs.push({type:'patty',cells:cells.slice(i,e)});i=e}else i++}}
+}
+function findRuns(){
+  const runs=[];
+  for(let r=0;r<ROWS;r++)lineRuns(grid[r].slice(),runs);
+  for(let c=0;c<COLS;c++)lineRuns(grid.map(row=>row[c]),runs);
+  return runs;
+}
+const movable=t=>t&&(t.state==='ok'||t.state==='mould');
+const hasMove=()=>!!findMove();
+function findMove(){
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)for(const[dr,dc]of[[0,1],[1,0]]){
+    const a=grid[r]&&grid[r][c],b=grid[r+dr]&&grid[r+dr][c+dc];
+    if(!movable(a)||!movable(b)||(a.state==='mould'&&b.state==='mould'))continue;
+    if(a.state==='ok'&&b.state==='ok'&&a.type===b.type)continue;
+    const sw=()=>{[a.type,b.type]=[b.type,a.type];[a.state,b.state]=[b.state,a.state]};
+    sw();const ok=findRuns().length>0;sw();if(ok)return[a,b];
+  }return null;
+}
+function unstick(){
+  const m=shuffleArr(grid.flat().filter(t=>t&&t.state==='mould'));
+  if(m.length){busy=true;toast('No moves left, so the kitchen hand scrubbed some mould.');removeTiles(new Set(m.slice(0,4))).then(resolve)}
+  else reshuffle();
+}
+function reshuffle(){
+  const oks=grid.flat().filter(t=>t&&t.state==='ok');let tries=0;
+  do{const types=shuffleArr(oks.map(t=>t.type));oks.forEach((t,i)=>t.type=types[i]);tries++}
+  while((findRuns().length||!hasMove())&&tries<60);
+  oks.forEach(visual);toast('No moves left. Board reshuffled.');
+}
+function collapse(){
+  const fresh=[];
+  for(let c=0;c<COLS;c++){
+    let w=ROWS-1;
+    for(let r=ROWS-1;r>=0;r--){const t=grid[r][c];if(t){if(r!==w){grid[w][c]=t;grid[r][c]=null;t.r=w}w--}}
+    const missing=w+1;
+    for(let r=w;r>=0;r--){const t=makeTile(pickType(),r,c);grid[r][c]=t;t.el.style.transition='none';t.el.style.transform=`translate(${c*TS}px,${(r-missing)*TS}px)`;fresh.push(t)}
+  }
+  boardEl.offsetHeight;fresh.forEach(t=>t.el.style.transition='');placeAll();
+}
+const hasNulls=()=>grid.some(row=>row.some(t=>!t));
+function removeTiles(set){set.forEach(t=>t.el.classList.add('pop'));return wait(110).then(()=>set.forEach(t=>{t.el.remove();if(grid[t.r][t.c]===t)grid[t.r][t.c]=null}))}
+async function resolve(){
+  busy=true;let chain=0;
+  while(true){
+    if(hasNulls()){collapse();await wait(150);continue}
+    const runs=findRuns();if(!runs.length)break;
+    chain++;const clear=new Set();
+    if(K.dishSet){K.maxChain=Math.max(K.maxChain,chain);}
+    runs.forEach(run=>{if(run.cells.length>=5&&K.dishSet)K.five=true;award(run.type,run.cells.length-2);run.cells.forEach(t=>clear.add(t))});
+    [...clear].forEach(t=>[[0,1],[1,0],[0,-1],[-1,0]].forEach(([dr,dc])=>{const n=grid[t.r+dr]&&grid[t.r+dr][t.c+dc];if(n&&n.state==='mould')clear.add(n)}));
+    sfx.match(chain);
+    await removeTiles(clear);
+  }
+  if(running&&!hasMove())reshuffle();
+  busy=false;runPending();
+}
+// a swipe made while the board is busy is remembered (by position) and played as soon as it settles
+function runPending(){
+  if(!K||!K.pending||busy)return;
+  const[r1,c1,r2,c2]=K.pending;K.pending=null;
+  const a=grid[r1]&&grid[r1][c1],b=grid[r2]&&grid[r2][c2];
+  if(a&&b)trySwap(a,b);
+}
+async function trySwap(a,b){
+  if(!movable(a)||!movable(b)||(a.state==='mould'&&b.state==='mould'))return;
+  if(busy){K.pending=[a.r,a.c,b.r,b.c];setSel(null);return}
+  setSel(null);busy=true;
+  const swap=()=>{grid[a.r][a.c]=b;grid[b.r][b.c]=a;[a.r,b.r]=[b.r,a.r];[a.c,b.c]=[b.c,a.c];place(a);place(b)};
+  swap();await wait(110);
+  if(findRuns().length){K.idle=0;await resolve()}
+  else{swap();a.el.classList.add('nope');setTimeout(()=>a.el.classList.remove('nope'),300);await wait(110);busy=false;runPending()}
+}
+function setSel(t){const old=sel;sel=t;if(old)visual(old);if(t)visual(t)}
+function douse(t){
+  t.hp--;sfx.puff();t.el.classList.add('puff');setTimeout(()=>t.el.classList.remove('puff'),120);
+  if(t.hp<=0){t.el.classList.add('pop');setTimeout(()=>{t.el.remove();if(grid[t.r][t.c]===t)grid[t.r][t.c]=null;if(!busy)resolve()},150)}
+}
+function tap(r,c){
+  const t=grid[r]&&grid[r][c];if(!t)return;
+  if(K.armed==='cleaner'){useCleaner(t);return}
+  if(t.state==='fire'){douse(t);return}
+  if(t.state==='mould')hint('mouldtap','You can push mould around, but only a match next to it bins it.');
+  if(sel&&sel!==t&&Math.abs(sel.r-r)+Math.abs(sel.c-c)===1){trySwap(sel,t);return}
+  setSel(sel===t?null:t);
+}
+let ptr=null;
+const cellAt=e=>{const b=boardEl.getBoundingClientRect();return{r:Math.floor((e.clientY-b.top)/TS),c:Math.floor((e.clientX-b.left)/TS),x:e.clientX,y:e.clientY}};
+boardEl.addEventListener('pointerdown',e=>{if(!running)return;ptr=cellAt(e);try{boardEl.setPointerCapture(e.pointerId)}catch(_){}});
+boardEl.addEventListener('pointermove',e=>{
+  if(!ptr||K.armed)return;const dx=e.clientX-ptr.x,dy=e.clientY-ptr.y;
+  if(Math.hypot(dx,dy)<TS*.38)return;
+  const[dr,dc]=Math.abs(dx)>Math.abs(dy)?[0,Math.sign(dx)]:[Math.sign(dy),0];
+  const a=grid[ptr.r]&&grid[ptr.r][ptr.c],b=grid[ptr.r+dr]&&grid[ptr.r+dr][ptr.c+dc];
+  ptr=null;if(a&&b)trySwap(a,b);
+});
+boardEl.addEventListener('pointerup',()=>{if(ptr){tap(ptr.r,ptr.c);ptr=null}});
+boardEl.addEventListener('pointercancel',()=>ptr=null);
+function ignite(t){t.state='fire';t.hp=2;if(sel===t)sel=null;visual(t)}
+function igniteRandom(){const c=grid.flat().filter(t=>t&&t.state==='ok');if(c.length)ignite(rnd(c));flameCheck()}
+function flameCheck(){if(R.relics.flame&&!busy&&findRuns().length)resolve()}
+
+/* ================= KITCHEN ================= */
+let toastT=null;
+function toast(msg,bad){const el=$('toast');el.textContent=msg;el.style.color=bad?'var(--danger)':'var(--heat)';el.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity=.35,2800)}
+function floatAt(el,text,bad){
+  const a=app.getBoundingClientRect(),b=el.getBoundingClientRect(),f=document.createElement('div');
+  f.className='float'+(bad?' bad':'');f.textContent=text;f.style.left=Math.max(0,b.left-a.left+b.width/2-24)+'px';f.style.top=(b.top-a.top)+'px';
+  app.appendChild(f);setTimeout(()=>f.remove(),1000);
+}
+function shake(){app.classList.remove('shake');void app.offsetWidth;app.classList.add('shake')}
+const grillOnFire=()=>K.grill.some(g=>g.state==='fire');
+function grillTimes(){const f=R.relics.turbo?.5:1;return{cook:5*f,ready:(R.relics.lamp?12:6)*f,smoke:3*f}}
+
+function award(type,n){
+  if(!MENU_INGS.has(type))return;
+  let amt=n===2&&hasUpg(type,'bulk')?3:n;
+  if(hasUpg(type,'double'))for(let i=0;i<n;i++)if(Math.random()<.2){amt++;floatAt($('pantry'),'+1 '+ING[type].e)}
+  if(type==='patty'){
+    if(grillOnFire()){toast('The grill\'s on fire, so that patty was wasted. Tap the flames!',true);sfx.bad();return}
+    for(let i=0;i<amt;i++){const s=K.grill.find(g=>g.state==='empty');
+      if(s){s.state='cooking';s.t=0;hint('grill','Patty\'s on the grill. Tap it when it turns green.')}
+      else{toast('Grill\'s full. That patty hit the floor.',true);break}}
+    return;
+  }
+  const before=K.pantry[type];K.pantry[type]=Math.min(cap(),K.pantry[type]+amt);
+  if(K.pantry[type]===before)toast(`Pantry's full of ${ING[type].name.toLowerCase()}. Serve something!`);
+  renderPantry(type);renderTickets();
+}
+const countItems=items=>items.reduce((m,i)=>(m[i]=(m[i]||0)+1,m),{});
+const canMake=items=>Object.entries(countItems(items)).every(([k,v])=>K.pantry[k]>=v);
+
+function genCustomer(){
+  const ru=DAYS[R.day].rules;let type='normal';
+  if(ru.influencer&&!K.influencerSeen&&R.menu.length>1&&K.time>25&&Math.random()<.08){type='influencer';K.influencerSeen=true}
+  else if(Math.random()<.05*(R.relics.decor?3:1))type='tipper';
+  else if(Math.random()<(ru.grumpy||0))type='grumpy';
+  let dishes;
+  if(type==='influencer')dishes=[...R.menu];
+  else if(type==='tipper')dishes=[R.menu.reduce((a,b)=>RECIPES[b].price>RECIPES[a].price?b:a)];
+  else dishes=[rnd(R.menu)];
+  const face=type==='grumpy'?'😠':type==='tipper'?'🤵':type==='influencer'?'🤳':rnd(FACES);
+  const q=type==='grumpy'?8:12;
+  return{type,face,dishes,qp:q,qmax:q};
+}
+function makeCritic(){return{type:'critic',face:'🧐',dishes:[...R.menu],qp:45,qmax:45}}
+function patienceFor(c){
+  const items=c.dishes.reduce((n,k)=>n+RECIPES[k].items.length,0), ru=DAYS[R.day].rules;
+  let p=c.type==='influencer'?6+4*items:c.type==='critic'?12+4.5*items:14+5*items;
+  if(c.type==='grumpy')p*=.6;
+  if(ru.rush&&c.type!=='critic')p*=.85;
+  return p;
+}
+function arrive(c,front){
+  if(front)K.queue.unshift(c);
+  else if(K.queue.length>=3){K.lost++;toast('Someone saw the queue and walked off.',true);return}
+  else K.queue.push(c);
+  sfx.bell();seatFromQueue();renderQueue();
+}
+function seatOrder(i,c){
+  const p=patienceFor(c);
+  K.orders[i]={id:++K.orderNo,cust:c,dishes:c.dishes.map(k=>({k,done:false})),patience:p,max:p};
+  if(c.type==='critic')toast('The food critic has been seated. One of everything, please.');
+  else if(c.type==='influencer')toast('An influencer! The whole menu, no tips. Serve it and you go viral.');
+  else if(c.type==='tipper')toast('A big tipper 🎩 just sat down. ×4 tip!');
+  else if(K.orderNo===1&&R.day===0)toast(`First customer! A ${RECIPES[c.dishes[0]].name} needs ${RECIPES[c.dishes[0]].items.map(i=>ING[i].e).join(' ')}.`);
+}
+function seatFromQueue(){
+  let changed=false;
+  for(let i=0;i<R.seats&&K.queue.length;i++)if(!K.orders[i]){seatOrder(i,K.queue.shift());changed=true}
+  if(changed){renderTickets();renderQueue()}
+}
+function walkout(i){
+  const o=K.orders[i];K.orders[i]=null;K.walkouts++;K.streak=0;
+  if(o.cust.type==='influencer'){K.orders.forEach(x=>{if(x)x.patience*=.7});toast('The influencer posted a bad review. Everyone\'s grumpier now.',true)}
+  else if(o.cust.type==='critic'){K.critic='left';K.criticMult=.5;toast('The critic walked out. Today\'s takings are halved.',true)}
+  else toast(`${RECIPES[o.dishes.find(d=>!d.done).k].name} walked out!`,true);
+  sfx.bad();shake();renderTickets();seatFromQueue();
+}
+function dishTip(o,k){
+  const rec=RECIPES[k],t=o.cust.type;
+  if(t==='influencer'||t==='critic')return 0;
+  let tip=rec.price+rec.items.filter(x=>hasUpg(x,'quality')).length+Math.round(2*o.patience/o.max)+(K.streak>=2?1:0);
+  if(t==='grumpy')tip*=2; if(t==='tipper')tip*=4; if(K.viral>0)tip*=2;
+  return tip;
+}
+function serve(i,el){
+  const o=K.orders[i];if(!o)return;
+  const d=o.dishes.find(x=>!x.done&&canMake(RECIPES[x.k].items));
+  if(!d||K.clean<1){if(d){toast('No clean plates! Tap the sink to scrub some.',true)}el.classList.remove('angry');void el.offsetWidth;el.classList.add('angry');sfx.bad();return}
+  K.clean--;K.eating.push(4+Math.random()*2);renderSink();if(!K.clean)hint('sink','Out of clean plates! Tap the sink to scrub dirty ones.');
+  RECIPES[d.k].items.forEach(x=>K.pantry[x]--);d.done=true;K.dishSet.add(d.k);
+  const tip=dishTip(o,d.k);K.earned+=tip;
+  floatAt(el,tip?'+$'+tip:o.cust.type==='critic'?'★':'📸');sfx.serve();
+  if(o.dishes.every(x=>x.done))complete(i);
+  renderTickets();renderPantry();
+}
+function complete(i){
+  const o=K.orders[i],t=o.cust.type;
+  K.served++;K.streak++;K.best=Math.max(K.best,K.streak);
+  if(t==='tipper')K.bonus.push('Big tipper served');
+  if(t==='influencer'){K.bonus.push('Influencer exposure');K.viral=4;toast('Gone viral! The next 4 customers tip double.');sfx.cash()}
+  else if(t==='critic'){K.critic='served';K.criticMult=Math.round((1.5+1.5*o.patience/o.max)*10)/10;toast(`The critic loved it. Today's takings ×${K.criticMult}!`);sfx.cash()}
+  else if(K.viral>0)K.viral--;
+  if((t==='normal'||t==='grumpy')&&R.relics.loyalty&&Math.random()<.2&&K.time>8){
+    const c={...o.cust,dishes:[rnd(R.menu)]};K.orders[i]=null;seatOrder(i,c);toast('Loyalty card: they\'ll have another!');return;
+  }
+  K.orders[i]=null;
+  if(!K.queue.length&&K.spawnT>2)K.spawnT=1.5;
+  seatFromQueue();
+}
+function plate(g){
+  if(!running)return;
+  if(g.state==='ready'||g.state==='smoking'){
+    if(K.pantry.patty>=cap()){toast('No room for that patty. Serve an order first!',true);sfx.bad();return}
+    K.pantry.patty++;K.plated++;g.state='empty';g.t=0;renderPantry('patty');renderTickets();beep(520,.06,'triangle',.06);
+  }else if(g.state==='burnt'){g.state='empty';g.t=0;sfx.puff()}
+  else if(g.state==='fire'){g.hp--;sfx.puff();if(g.hp<=0){g.state='empty';g.t=0;toast(grillOnFire()?'One fire out. Keep going!':'Grill fire out. Cooking again.')}}
+}
+
+/* ================= ABILITIES ================= */
+function oldestOrder(){return K.orders.filter(Boolean).sort((a,b)=>a.id-b.id)[0]}
+function useAbility(id){
+  if(!running)return;
+  if(K.cd[id]>0){sfx.bad();return}
+  let used=true;
+  if(id==='prep'){
+    const o=oldestOrder();let miss=null;
+    if(o){for(const d of o.dishes){if(d.done)continue;const need=countItems(RECIPES[d.k].items);miss=Object.keys(need).find(k=>K.pantry[k]<need[k]&&K.pantry[k]<cap());if(miss)break}}
+    if(miss){K.pantry[miss]++;renderPantry(miss);renderTickets();toast(`Pre-prepped ${ING[miss].name.toLowerCase()} is ready.`)}
+    else{toast('The oldest ticket isn\'t missing anything.');used=false}
+  }else if(id==='warden'){
+    const fires=grid.flat().filter(t=>t&&t.state==='fire');const gf=K.grill.filter(g=>g.state==='fire');
+    if(!fires.length&&!gf.length){toast('Nothing\'s on fire. Yet.');used=false}
+    else{gf.forEach(g=>{g.state='empty';g.t=0});if(fires.length){busy=true;removeTiles(new Set(fires)).then(resolve)}toast('Fire warden: all clear.');sfx.puff()}
+  }else if(id==='freeze'){K.freezeT=6;toast('Rush hour: patience frozen for 6 seconds.')}
+  else if(id==='ladle'){
+    if(busy){used=false}else{
+      const types=[...new Set(grid.flat().filter(t=>t&&t.state==='ok'&&MENU_INGS.has(t.type)).map(t=>t.type))];
+      if(!types.length){used=false}else{
+        const ty=rnd(types),tiles=shuffleArr(grid.flat().filter(t=>t&&t.state==='ok'&&t.type===ty)).slice(0,3);
+        busy=true;award(ty,1);toast(`Lucky ladle scooped up ${ING[ty].e}.`);removeTiles(new Set(tiles)).then(resolve);
+      }}
+  }else if(id==='cleaner'){
+    K.armed=K.armed==='cleaner'?null:'cleaner';
+    if(K.armed){toast('Tap a tile: every tile of that kind gets cleared.');setSel(null)}
+    renderAbilities();$('boardwrap').classList.toggle('armed',!!K.armed);return;
+  }
+  if(used){K.cd[id]=ABILITIES[id].cd;K.usedAb=true;sfx.done()}else sfx.bad();
+  renderAbilities();
+}
+function useCleaner(t){
+  if(busy)return;
+  const kind=t.state==='ok'?t.type:t.state;
+  const set=new Set(grid.flat().filter(x=>x&&(t.state==='ok'?x.state==='ok'&&x.type===kind:x.state===kind)));
+  K.armed=null;$('boardwrap').classList.remove('armed');K.cd.cleaner=ABILITIES.cleaner.cd;K.usedAb=true;
+  toast(`Cleaner wiped ${set.size} ${t.state==='ok'?ING[kind].e:kind==='mould'?'🦠':'🔥'} tiles.`);
+  busy=true;sfx.puff();removeTiles(set).then(resolve);renderAbilities();
+}
+
+/* ================= RENDER (shift) ================= */
+function ticketHTML(o){
+  const t=o.cust.type,multi=o.dishes.length>1;
+  const who={normal:'',grumpy:'Grumpy ×2',tipper:'🎩 Tip ×4',influencer:'Influencer',critic:'Food critic'}[t];
+  const dishes=o.dishes.map(d=>{
+    const used={};
+    const icons=RECIPES[d.k].items.map(k=>{used[k]=(used[k]||0)+1;const em=k==='patty'?ING.patty.cooked:ING[k].e;return`<span class="${d.done||used[k]<=K.pantry[k]?'':'miss'}">${em}</span>`}).join('');
+    return`<div class="dish${d.done?' done':''}">${multi?'':`<div class="nm">${RECIPES[d.k].name}</div>`}<div class="items">${icons}</div></div>`}).join('');
+  return`<div class="top"><span class="face">${o.cust.face}</span><span class="who">${who||'#'+String(o.id).padStart(3,'0')}</span></div>${dishes}<div class="bar"><i></i></div>`;
+}
+// tickets update in place (no rebuild per match), so taps aren't lost and the drop-in animation plays once
+function renderTickets(){
+  const wrap=$('tickets');
+  for(let i=0;i<4;i++){
+    const cur=wrap.children[i];let el=null;
+    if(i>=R.seats){if(cur&&cur.classList.contains('seat-locked'))continue;el=document.createElement('div');el.className='seat-locked';el.textContent='🔒'}
+    else{
+      const o=K.orders[i];
+      if(!o){if(cur&&cur.classList.contains('seat-empty'))continue;el=document.createElement('div');el.className='seat-empty';el.textContent='Empty seat'}
+      else{
+        if(!(o.el&&cur===o.el)){const me=document.createElement('div');me.addEventListener('pointerdown',()=>running&&serve(i,me));o.el=me;o.html=null;el=me}
+        const ready=K.clean>0&&o.dishes.some(d=>!d.done&&canMake(RECIPES[d.k].items));
+        const cls=`ticket t-${o.cust.type}${o.dishes.length>1?' multi':''}${ready?' ready':''}`;
+        if(o.el.className!==cls)o.el.className=cls;
+        const html=ticketHTML(o);if(o.html!==html){o.html=html;o.el.innerHTML=html;o.barEl=o.el.querySelector('.bar i')}
+        if(ready&&!o.wasReady)sfx.ready();o.wasReady=ready;
+        if(ready)hint('ready','Ticket\'s green! Tap it to serve.');
+        if(!el)continue;
+      }
+    }
+    if(cur)wrap.replaceChild(el,cur);else wrap.appendChild(el);
+  }
+  updateBars();
+}
+function renderSink(){
+  if(!K||!K.dishSet)return;
+  $('cleanN').textContent='🍽️ '+K.clean;
+  const n=Math.min(K.dirty,7);
+  const h=Array.from({length:n},()=>'<span class="d">🍽️</span>').join('')+(K.dirty>7?`<small>+${K.dirty-7}</small>`:'');
+  if($('dirtyStack').innerHTML!==h)$('dirtyStack').innerHTML=h;
+  $('scrub').firstChild.style.width=(K.scrub/3*100)+'%';
+  $('sink').classList.toggle('empty',running&&K.clean===0&&K.dirty>0);
+  $('sink').classList.toggle('busy',running&&K.dirty>0&&K.clean>0);
+}
+function washOne(){K.dirty--;K.clean++;K.scrub=0;beep(1320,.07,'sine',.06);renderSink();renderTickets()}
+$('sink').addEventListener('pointerdown',()=>{if(!running||!K.dirty)return;K.scrub++;sfx.puff();if(K.scrub>=3)washOne();else renderSink()});
+function lockFor(t,msg,cb){K.lockT=t;K.lockCb=cb;$('lock').textContent=msg;$('lock').hidden=false;sfx.alarm()}
+function updateBars(){
+  K.orders.forEach(o=>{if(!o||!o.barEl)return;const f=Math.max(0,o.patience/o.max);
+    o.barEl.style.width=(f*100)+'%';o.barEl.style.background=f>.5?'var(--ok)':f>.25?'var(--heat)':'var(--danger)'});
+}
+function renderQueue(){
+  const q=$('queue');
+  q.innerHTML=K.queue.length?`<span>Waiting</span>`+K.queue.map((c,i)=>`<span class="qchip" data-q="${i}">${c.face}</span>`).join(''):'<span style="opacity:.55">No queue</span>';
+  updateQueue();
+}
+function updateQueue(){
+  $('queue').querySelectorAll('.qchip').forEach(el=>{const c=K.queue[+el.dataset.q];if(!c)return;const f=c.qp/c.qmax;el.style.borderColor=f>.5?'var(--ok)':f>.25?'var(--heat)':'var(--danger)'});
+}
+function renderPantry(flash){
+  const ings=[...MENU_INGS];
+  $('capLabel').textContent='max '+cap();
+  $('pantry').innerHTML=ings.map(k=>`<div class="pitem${K.pantry[k]>=cap()?' full':''}${flash===k?' flash':''}" title="${ING[k].name}"><span class="em">${k==='patty'?ING.patty.cooked:ING[k].e}</span><span class="pips">${Array.from({length:cap()},(_,i)=>`<i class="${i<K.pantry[k]?'on':''}"></i>`).join('')}</span></div>`).join('');
+}
+const gEls=[];
+function buildGrill(){
+  const has=MENU_INGS.has('patty');
+  $('grillPanel').hidden=!has;$('station').classList.toggle('nogrill',!has);
+  const g=$('grill');g.innerHTML='';gEls.length=0;g.style.gridTemplateColumns=`repeat(${K.grill.length},1fr)`;
+  K.grill.forEach(s=>{const b=document.createElement('button');b.className='gslot';b.innerHTML='<span class="em"></span><span class="tx"></span><span class="pg"></span>';
+    b.addEventListener('pointerdown',()=>plate(s));g.appendChild(b);gEls.push(b)});
+}
+function renderGrill(){
+  if(!gEls.length)return;
+  const G=grillTimes(),fire=grillOnFire();
+  $('grill').classList.toggle('ablaze',fire);
+  $('grillLabel').textContent=fire?'🔥 On fire: not cooking':'Grill';
+  $('grillLabel').style.color=fire?'var(--danger)':'';
+  K.grill.forEach((g,i)=>{
+    const b=gEls[i],[em,tx,pg]=b.children;
+    const cls='gslot '+g.state+(fire&&g.state==='cooking'?' paused':'');if(b.className!==cls)b.className=cls;
+    let e='',t='',w=0;
+    if(g.state==='empty')t='Empty';
+    else if(g.state==='cooking'){e='🥩';t=fire?'Paused':'Cooking';w=g.t/G.cook}
+    else if(g.state==='ready'){e='🍖';const held=K.pantry.patty>=cap();t=held?'Kept warm':'Tap! Ready';w=1-(g.t-G.cook)/G.ready}
+    else if(g.state==='smoking'){e='💨';t='Burning!';w=1-(g.t-G.cook-G.ready)/G.smoke}
+    else if(g.state==='burnt'){e='🟫';t='Burnt. Tap to bin'}
+    else{e='🔥';t='Tap ×'+g.hp}
+    if(em.textContent!==e)em.textContent=e;if(tx.textContent!==t)tx.textContent=t;
+    pg.style.width=(w*100)+'%';pg.style.background=g.state==='ready'?'var(--gold)':g.state==='smoking'?'var(--danger)':'var(--flame)';
+  });
+  const burn=K.grill.some(g=>g.state==='smoking'),rdy=K.grill.some(g=>g.state==='ready')&&K.pantry.patty<cap();
+  const bw=$('boardwrap');bw.classList.toggle('burning',burn);bw.classList.toggle('patty',rdy&&!burn);
+}
+function abilityUseful(id){
+  if(id==='warden')return grid.flat().some(t=>t&&t.state==='fire')||grillOnFire();
+  if(id==='cleaner')return grid.flat().filter(t=>t&&t.state==='mould').length>=3;
+  if(id==='freeze')return K.orders.some(o=>o&&o.patience/o.max<.3);
+  if(id==='prep'||id==='ladle')return K.orders.some(o=>o&&o.patience/o.max<.45);
+  return false;
+}
+function renderAbilities(){
+  const el=$('abils');
+  if(!R.abilities.length){el.hidden=true;el.innerHTML='';el.dataset.key='';return}
+  el.hidden=false;
+  const key=R.abilities.join(',');
+  if(el.dataset.key!==key){el.dataset.key=key;el.innerHTML=[0,1].map(i=>{const id=R.abilities[i];if(!id)return'<div class="ab empty"></div>';const a=ABILITIES[id];
+    return`<button class="ab" data-ab="${id}" aria-label="${a.name}"><span class="cdv"></span><span class="em">${a.e}</span><span class="tx"></span></button>`}).join('')}
+  el.querySelectorAll('[data-ab]').forEach(b=>{
+    const id=b.dataset.ab,a=ABILITIES[id],cd=(K.cd&&K.cd[id])||0;
+    const cls='ab'+(cd<=0?' ready':'')+(K.armed===id?' armed':'')+(cd<=0&&K.armed!==id&&running&&abilityUseful(id)?' suggest':'');
+    if(b.className!==cls)b.className=cls;
+    b.firstChild.style.setProperty('--p',cd/a.cd);
+    const t=cd>0?Math.ceil(cd)+'s':'Ready';if(b.lastChild.textContent!==t)b.lastChild.textContent=t;
+  });
+}
+$('abils').addEventListener('pointerdown',e=>{const b=e.target.closest('[data-ab]');if(b)useAbility(b.dataset.ab)});
+let abilTick=0;
+function renderHud(){
+  const d=DAYS[R.day];
+  $('clock').textContent=fmt(K.time);$('clock').classList.toggle('low',running&&K.time<=10);
+  $('timefill').style.width=Math.max(0,K.time/K.len*100)+'%';$('timebar').classList.toggle('low',running&&K.time<=10);
+  $('earned').textContent='$'+K.earned;$('target').textContent='$'+d.target;
+  const proj=Math.round(K.earned*(R.boss==='critic'&&d.rules.boss?K.criticMult:1));
+  $('gfill').style.width=Math.min(100,proj/d.target*100)+'%';$('gbar').classList.toggle('met',proj>=d.target);
+  const chips=[];
+  if(d.rules.boss&&R.boss==='inspector')chips.push(`<span class="chip boss">📋 Inspection ${Math.ceil(K.inspectT)}s · ${'●'.repeat(K.strikes)}${'○'.repeat(3-K.strikes)}</span>`);
+  if(d.rules.boss&&R.boss==='critic')chips.push(`<span class="chip boss">🧐 ${K.critic==='served'?'Review ×'+K.criticMult:K.critic==='left'?'Walked out ×0.5':K.criticT>0?'Critic in '+Math.ceil(K.criticT)+'s':'Critic waiting'}</span>`);
+  if(K.freezeT>0)chips.push(`<span class="chip good">⏸️ Frozen ${Math.ceil(K.freezeT)}s</span>`);
+  if(K.viral>0)chips.push(`<span class="chip good">📸 Viral ×2 · ${K.viral} left</span>`);
+  if(K.streak>=2)chips.push(`<span class="chip">Streak ${K.streak} · +$1</span>`);
+  if(R.obj&&K.dishSet)chips.push(`<span class="chip obj ${objState()}">🎯 ${OBJ_SHORT[R.obj]} ${OBJ[R.obj].prog(R.day)}</span>`);
+  $('closeBtn').hidden=!(running&&proj>=d.target&&K.time>1);
+  const html=chips.join('');if($('chips').innerHTML!==html)$('chips').innerHTML=html;
+  if(++abilTick%6===0)renderAbilities();
+}
+
+/* ================= SHIFT LOOP ================= */
+function startShift(){
+  const d=DAYS[R.day];
+  MENU_INGS=menuIngs();TYPES=boardTypes();computeWeights();
+  K={time:d.len,len:d.len,earned:0,served:0,walkouts:0,lost:0,streak:0,best:0,spawnT:1,spreadT:4,flareT:12+Math.random()*6,
+     viral:0,freezeT:0,armed:null,cd:{},strikes:0,inspectT:15,criticT:d.rules.boss&&R.boss==='critic'?10:-1,criticMult:1,critic:null,
+     influencerSeen:false,clean:4+(R.relics.plates?2:0),dirty:0,scrub:0,eating:[],dwT:0,lockT:0,lockCb:null,iw:0,dishSet:new Set(),bonus:[],maxChain:0,five:false,usedAb:false,plated:0,burnt:0,metLeft:null,orders:[null,null,null,null],queue:[],orderNo:0,pantry:{},shutdown:false,
+     grill:Array.from({length:R.relics.grill3?3:2},()=>({state:'empty',t:0,hp:0,spawnT:0}))};
+  MENU_INGS.forEach(i=>K.pantry[i]=0);
+  $('dayName').textContent=d.name;$('dayTag').textContent=d.rules.boss?BOSSES[R.boss].name:d.tag;
+  $('boardwrap').classList.remove('armed');
+  $('lock').hidden=true;
+  fill();buildGrill();renderGrill();renderPantry();renderTickets();renderQueue();renderAbilities();renderHud();renderSink();
+  hideScreen();resize();running=true;
+  toast(R.day===0?'Doors open. Match 🍞 and 🧀 for toasties.':`${d.name}: doors open!`);
+}
+let last=0;
+function tick(now){
+  const dt=Math.min(.1,(now-last)/1000||0);last=now;
+  if(running&&!paused){
+    const d=DAYS[R.day],ru=d.rules;K.time-=dt;const pr=1-K.time/K.len;
+    if(K.metLeft==null&&K.earned>=d.target)K.metLeft=K.time;
+    if(!K.warned&&K.time<=10){K.warned=true;toast('10 seconds left!',true);sfx.alarm()}
+    const sec=Math.ceil(K.time);if(sec<=5&&sec>0&&sec!==K.lastSec){K.lastSec=sec;beep(1000,.05,'square',.04)}
+    if(K.freezeT>0)K.freezeT-=dt;
+    const drain=K.freezeT>0?0:dt;
+    for(const id in K.cd)if(K.cd[id]>0){K.cd[id]=Math.max(0,K.cd[id]-dt);if(K.cd[id]===0)beep(784,.12,'sine',.07)}
+    // inspector lock
+    if(K.lockT>0){K.lockT-=dt;if(K.lockT<=0){K.lockT=0;$('lock').hidden=true;const f=K.lockCb;K.lockCb=null;if(f)f()}}
+    // plates: eaten off, then back to the sink dirty
+    if(K.eating.length){let back=0;K.eating=K.eating.map(t=>t-dt).filter(t=>{if(t<=0){back++;return false}return true});if(back){K.dirty+=back;renderSink()}}
+    if(R.relics.dishwasher&&K.dirty>0){K.dwT+=dt;if(K.dwT>=6){K.dwT=0;washOne()}}
+    // customers
+    K.spawnT-=dt;
+    if(!K.queue.length&&K.spawnT>1.2&&K.orders.some((o,i)=>i<R.seats&&!o))K.spawnT=1.2;
+    if(K.spawnT<=0){if(K.time>5)arrive(genCustomer());K.spawnT=lerp(d.iv[0],d.iv[1],pr)*(.85+Math.random()*.3)}
+    if(K.criticT>0){K.criticT-=dt;if(K.criticT<=0){arrive(makeCritic(),true);toast('The food critic is here!')}}
+    let qChanged=false;
+    for(const c of [...K.queue]){c.qp-=drain;if(c.qp<=0){K.queue.splice(K.queue.indexOf(c),1);qChanged=true;
+      if(c.type==='critic'){K.critic='left';K.criticMult=.5;toast('The critic got sick of waiting. Takings halved.',true)}
+      else{K.walkouts++;K.streak=0;toast('A customer gave up waiting for a seat.',true)}}}
+    if(qChanged)renderQueue();else updateQueue();
+    K.orders.forEach((o,i)=>{if(!o)return;o.patience-=drain;if(o.patience<=0)walkout(i)});
+    // grill
+    if(MENU_INGS.has('patty')){
+      const G=grillTimes(),onFire=grillOnFire();
+      K.grill.forEach(g=>{
+        if(g.state==='fire'){g.spawnT+=dt;if(g.spawnT>6){g.spawnT=0;igniteRandom();sfx.alarm()}}
+        else if(!onFire&&['cooking','ready','smoking'].includes(g.state)){
+          const held=g.state==='ready'&&K.pantry.patty>=cap();
+          if(!held)g.t+=dt;const prev=g.state;
+          g.state=g.t<G.cook?'cooking':g.t<G.cook+G.ready?'ready':g.t<G.cook+G.ready+G.smoke?'smoking':(ru.fire?'fire':'burnt');
+          if(prev==='cooking'&&g.state==='ready'){sfx.done();sizzleUntil=performance.now()+700;floatAt($('board'),'🍖 Ready!')}
+          if(g.state==='fire'){K.burnt++;g.hp=3;g.spawnT=0;igniteRandom();igniteRandom();sfx.alarm();shake();toast('Grill fire! Cooking stops until you tap it out.',true)}
+          if(g.state==='burnt'){K.burnt++;sfx.bad();toast('A patty burnt. Tap it to bin it.',true)}
+        }
+      });
+    }
+    // board hazards
+    if(ru.spoil)grid.flat().forEach(t=>{if(t&&t.state==='ok'&&ING[t.type].spoils&&!hasUpg(t.type,'fresh')){
+      t.age+=dt;
+      if(t.age>t.spoilAt){t.state='mould';visual(t);hint('mould','Mould! It can be swapped but never matches. Match next to it to bin it.')}
+      else if(t.age>t.spoilAt-7&&!t.el.classList.contains('aging'))visual(t)}});
+    if(ru.fire){
+      K.flareT-=dt;if(K.flareT<=0){K.flareT=(ru.rush?16:22)+Math.random()*10;igniteRandom();toast('Grease flare-up! Tap the flames.',true);sfx.alarm()}
+      K.spreadT-=dt;if(K.spreadT<=0){K.spreadT=4;let spread=false;
+        grid.flat().filter(t=>t&&t.state==='fire').forEach(f=>{if(Math.random()<.25){
+          const n=[[0,1],[1,0],[0,-1],[-1,0]].map(([dr,dc])=>okAt(f.r+dr,f.c+dc)).filter(Boolean);if(n.length){ignite(rnd(n));spread=true}}});
+        if(spread)flameCheck()}
+    }
+    // match hint after 5s without a match
+    K.idle=(K.idle||0)+dt;
+    if(K.idle>5&&!busy){K.idle=0;const m=findMove();if(m)m.forEach(t=>{t.el.classList.add('hint');setTimeout(()=>t.el.classList.remove('hint'),1900)})}
+    // stuck board safety net
+    K.stuckT=(K.stuckT||0)-dt;if(K.stuckT<=0){K.stuckT=1;if(!busy&&!hasMove())unstick()}
+    // inspector
+    if(ru.boss&&R.boss==='inspector'&&!K.lockT){K.inspectT-=dt;
+      if(K.inspectT<=3&&!K.iw){K.iw=1;toast('Inspection in 3 seconds. Clean up!',true)}
+      if(K.inspectT<=0){K.inspectT=15;K.iw=0;lockFor(2,'📋 The inspector is checking your kitchen…',inspect)}}
+    updateBars();renderGrill();renderHud();
+    if(running&&K.time<=0)endShift();
+  }
+  updateSizzle();
+  requestAnimationFrame(tick);
+}
+function inspect(){
+  if(!running)return;
+  const v=grid.flat().filter(t=>t&&(t.state==='mould'||t.state==='fire')).length+K.grill.filter(g=>g.state==='fire'||g.state==='burnt').length+(K.dirty>=4?1:0);
+  if(v){K.strikes++;toast(`Inspection: ${v} violation${v>1?'s':''}. Strike ${K.strikes} of 3.`,true);sfx.bad();shake();if(K.strikes>=3){K.shutdown=true;endShift()}}
+  else{K.earned+=3;toast('Spotless! The inspector leaves $3.');sfx.cash()}
+}
+function endShift(){
+  running=false;K.time=Math.max(0,K.time);renderHud();$('closeBtn').hidden=true;
+  const d=DAYS[R.day];
+  if(d.rules.boss&&R.boss==='critic'&&!K.critic){K.critic='unimpressed';K.criticMult=.75}
+  const final=Math.round(K.earned*K.criticMult);
+  K.final=final;K.pass=!K.shutdown&&final>=d.target;
+  K.stars=[];
+  if(K.pass){
+    K.stars.push(['Hit the target',1]);
+    if(final>=Math.ceil(d.target*1.5))K.stars.push([`Took $${Math.ceil(d.target*1.5)} (1.5× target)`,1]);
+    const O=OBJ[R.obj];if(O&&O.done(R.day))K.stars.push(['Objective: '+O.desc(R.day),1]);
+    K.bonus.forEach(b=>K.stars.push([b,1]));
+    if(d.rules.boss)K.stars.push(['Beat the '+BOSSES[R.boss].name.toLowerCase(),2]);
+  }
+  K.starTotal=K.stars.reduce((a,x)=>a+x[1],0);
+  R.wallet+=K.starTotal;R.starsAll=(R.starsAll||0)+K.starTotal;R.total+=final;R.servedAll+=K.served;
+  setTimeout(showResults,500);
+}
+
+/* ================= SCREENS ================= */
+const scr=$('screen');
+function showScreen(html){scr.innerHTML=`<div class="sheet">${html}</div>`;scr.hidden=false;scr.scrollTop=0}
+function hideScreen(){scr.hidden=true}
+function cal(){
+  return`<div class="cal">${DAYS.map((d,i)=>`<div class="cd ${i<R.day?'past':i===R.day?'now':''}"><b>${d.short}</b><span>${d.rules.boss?BOSSES[R.boss].icon:d.icon}</span><small>$${d.target}</small></div>`).join('')}</div>`;
+}
+const icons=k=>RECIPES[k].items.map(i=>i==='patty'?ING.patty.cooked:ING[i].e).join('');
+function menuList(){
+  return`<div class="menu">${R.menu.map(k=>`<div class="m"><span>${RECIPES[k].name}</span><span class="ic">${icons(k)}</span><b>$${RECIPES[k].price}</b></div>`).join('')}</div>`;
+}
+const walletRow=()=>`<div class="wallet"><span class="eyebrow">Stars to spend</span><b style="color:#b8860b">${ST(R.wallet)}</b></div>`;
+function showTitle(){
+  newRun();
+  showScreen(`<div class="eyebrow">A one-week roguelite prototype</div>
+    <h1>Lunch Rush</h1>
+    <p>Survive five lunch shifts. Take enough money to hit each day's target, earn stars, and spend them on your kitchen between shifts.</p>
+    ${cal()}
+    <div class="rule"><div class="h">Earning stars</div><p class="small">★ Hit the target (required) · ★ Reach 1.5× the target · ★ Complete the day's objective. Bonus stars for big tippers, influencers and closing early with 20s or more left.</p></div>
+    <p class="small">This week's boss: <b>${BOSSES[R.boss].icon} ${BOSSES[R.boss].name}</b> on Friday. Swipe or tap two tiles to swap them. Match 3 or more to stock the pantry.</p>
+    <button class="go" data-act="intro">Start the week</button>`);
+}
+function showIntro(){
+  const d=DAYS[R.day],boss=d.rules.boss?BOSSES[R.boss]:null;
+  if(!R.objOpts){R.objOpts=shuffleArr(Object.keys(OBJ).filter(k=>OBJ[k].ok(R.day))).slice(0,2);R.obj=R.objOpts[0]}
+  const objCards=R.objOpts.map(k=>`<div class="card pick" tabindex="0" data-act="obj" data-k="${k}"${R.obj===k?' style="border-color:var(--red);box-shadow:0 0 0 2px var(--red)"':''}><span class="ic">🎯</span><span class="nm">${OBJ[k].desc(R.day)}</span><b style="color:#b8860b">+1★</b><span class="ds">${R.obj===k?'Selected':'Tap to choose this one'}</span></div>`).join('');
+  showScreen(`<div class="eyebrow">Day ${R.day+1} of 5 · ${d.name}</div>
+    <h1>${boss?boss.name:d.tag}</h1>
+    ${cal()}
+    <div class="rule"><div class="h">${boss?'Boss rule':R.day===0?'How it works':'New today'}</div><p>${boss?boss.rule:d.rule}</p></div>
+    <div class="recap"><span>★ Target (required)</span><b>$${d.target}</b><span>★ Bonus star</span><b>$${Math.ceil(d.target*1.5)}</b>${boss?'<span>Beat the boss</span><b>+2★</b>':''}</div>
+    <div><div class="eyebrow">Pick today's objective</div><div class="cards">${objCards}</div></div>
+    <div><div class="eyebrow">On the menu</div>${menuList()}</div>
+    <button class="go" data-act="start">Open the kitchen</button>`);
+}
+function showResults(){
+  const d=DAYS[R.day],crit=d.rules.boss&&R.boss==='critic';
+  const lines=[['Takings','$'+K.earned]];
+  if(crit)lines.push(['Critic review',K.critic==='served'?'×'+K.criticMult:K.critic==='left'?'Walked out ×0.5':'Unimpressed ×0.75'],['Final','$'+K.final]);
+  lines.push(['Target','$'+d.target],['Orders served',K.served],['Walkouts',K.walkouts+K.lost],['Best streak',K.best]);
+  const recap=`<div class="recap">${lines.map(([a,b])=>`<span>${a}</span><b>${b}</b>`).join('')}</div>`;
+  const O=OBJ[R.obj];
+  const starList=`<div class="recap">${K.stars.map(([a,n])=>`<span>${a}</span><b style="color:#b8860b">+${ST(n)}</b>`).join('')}${O&&!O.done(R.day)&&K.pass?`<span style="opacity:.55">Objective missed: ${O.desc(R.day)}</span><b style="opacity:.55">—</b>`:''}</div>`;
+  if(!K.pass){
+    showScreen(`<div class="eyebrow">${d.name} · Run over</div><h1>Closed for good</h1>
+      <div class="big fail">$${K.final}</div>
+      <p>${K.shutdown?'Three strikes from the health inspector shut the kitchen down.':`You were $${d.target-K.final} short of today's target.`}</p>
+      ${recap}
+      <p class="small">Made it to ${d.name} with ${R.menu.length} dish${R.menu.length>1?'es':''} on the menu and ${ST(R.starsAll||0)} earned.</p>
+      <button class="go" data-act="title">Start a new week</button>`);
+    return;
+  }
+  if(R.day===DAYS.length-1){
+    showScreen(`<div class="eyebrow">Friday · Week complete</div><h1>You survived the week</h1>
+      <div class="stars-big">${ST(R.starsAll)}</div>
+      <p>Stars earned across five shifts, with $${R.total} in takings and ${R.servedAll} orders served.</p>
+      ${starList}
+      ${recap}
+      <div><div class="eyebrow">Your final menu</div>${menuList()}</div>
+      <button class="go" data-act="title">Start a new week</button>`);
+    return;
+  }
+  showScreen(`<div class="eyebrow">${d.name} · Shift over</div><h1>Doors stay open</h1>
+    <div class="stars-big">+${ST(K.starTotal)}</div>
+    ${starList}
+    ${recap}
+    ${walletRow()}
+    <button class="go" data-act="draft">Add a recipe</button>`);
+}
+function showDraft(){
+  if(!R.draft){
+    const avail=Object.keys(RECIPES).filter(k=>!R.menu.includes(k));
+    let pick=shuffleArr(avail.slice()).slice(0,3);
+    if(!menuIngs().has('patty')&&!pick.some(k=>RECIPES[k].items.includes('patty'))){
+      const g=avail.filter(k=>RECIPES[k].items.includes('patty'));if(g.length&&pick.length)pick[pick.length-1]=rnd(g);
+    }
+    R.draft={options:pick,chosen:null};
+  }
+  const D=R.draft,mi=menuIngs(),full=R.menu.length>=R.slots;
+  const card=k=>{const r=RECIPES[k],newIngs=[...new Set(r.items)].filter(i=>!mi.has(i));
+    const tags=[r.items.includes('patty')?'Uses the grill':'',newIngs.length?'Adds '+newIngs.map(i=>ING[i].e).join(' ')+' to the board':''].filter(Boolean).join(' · ')||'Uses ingredients you already have';
+    return`<div class="card pick" tabindex="0" data-act="choose" data-k="${k}"${D.chosen===k?' style="border-color:var(--red);box-shadow:0 0 0 2px var(--red)"':''}><span class="ic">${icons(k)}</span><span class="nm">${r.name}</span><b style="font-family:var(--display);font-weight:400;font-size:16px">$${r.price}</b><span class="ds">${tags}</span></div>`};
+  let swap='';
+  if(D.chosen&&full){
+    const sp=SLOT_PRICE[R.slots];
+    swap=`<div class="rule"><div class="h">Menu full (${R.menu.length}/${R.slots} slots)</div>
+      <p class="small">Replace a dish with ${RECIPES[D.chosen].name}${R.slots<4?`, or buy another slot for ${ST(sp)}`:''}.</p>
+      <div class="cards">${R.menu.map(k=>`<div class="card"><span class="ic" style="font-size:16px">${icons(k)}</span><span class="nm">${RECIPES[k].name}</span><button class="buy" data-act="replace" data-k="${k}">Swap</button><span class="ds">$${RECIPES[k].price} a plate</span></div>`).join('')}</div>
+      ${R.slots<4?`<button class="go" data-act="slotadd" ${R.wallet<sp?'disabled style="opacity:.5"':''}>Buy a slot for ${ST(sp)} and add it</button>`:''}</div>`;
+  }
+  showScreen(`<div class="eyebrow">Day ${R.day+1} done · New recipe</div><h1>Pick a dish</h1>
+    <p class="small">New dishes bring their ingredients onto the board. More ingredient types means more variety but harder matching.</p>
+    <div class="cards">${D.options.map(card).join('')}</div>
+    ${swap}
+    <div class="row2"><button class="go alt" data-act="skipdraft">Keep my menu</button></div>
+    ${walletRow()}`);
+}
+function genOffers(){
+  const mi=menuIngs(),pool=[];
+  Object.keys(ABILITIES).forEach(id=>{if(!R.abilities.includes(id))pool.push({kind:'ability',id})});
+  Object.keys(RELICS).forEach(id=>{const x=RELICS[id];if(!R.relics[id]&&(!x.needs||mi.has(x.needs)))pool.push({kind:'relic',id})});
+  mi.forEach(ing=>Object.keys(UPGRADES).forEach(id=>{if(R.upg[ing+':'+id])return;if(UPGRADES[id].spoilOnly&&!ING[ing].spoils)return;pool.push({kind:'upg',id,ing})}));
+  shuffleArr(pool);
+  const out=[],take=k=>{const i=pool.findIndex(o=>o.kind===k);if(i>=0)out.push(pool.splice(i,1)[0])};
+  take('ability');take('upg');
+  while(out.length<4&&pool.length)out.push(pool.shift());
+  return shuffleArr(out);
+}
+function info(o){
+  const price=starPrice(o);
+  if(o.kind==='ability'){const a=ABILITIES[o.id];return{ic:a.e,nm:a.name,tag:`Ability · ${a.cd}s cooldown`,ds:a.desc,price}}
+  if(o.kind==='relic'){const r=RELICS[o.id];return{ic:r.e,nm:r.name,tag:r.catchy?'Relic · with a catch':'Relic',ds:r.desc,price}}
+  const u=UPGRADES[o.id],n=ING[o.ing].name.toLowerCase();
+  return{ic:ING[o.ing].e,nm:`${u.name}: ${ING[o.ing].name}`,tag:'Ingredient upgrade',ds:u.desc.replaceAll('{ing}',n),price};
+}
+const sellValue=(kind,id)=>Math.floor(starPrice({kind,id})/2);
+function showShop(){
+  if(!R.offers){R.offers=genOffers();R.reroll=0}
+  const cards=R.offers.map((o,i)=>{
+    if(o.sold)return`<div class="card sold"><span class="ic">✓</span><span class="nm">Sold</span><span></span><span class="ds">&nbsp;</span></div>`;
+    const x=info(o);let dis=R.wallet<x.price,why='';
+    if(o.kind==='ability'&&R.abilities.length>=2){dis=true;why=' (ability slots full: sell one first)'}
+    return`<div class="card"><span class="ic">${x.ic}</span><span><span class="nm">${x.nm}</span><br><span class="tag">${x.tag}${why}</span></span><button class="buy" data-act="buy" data-i="${i}" ${dis?'disabled':''}>${ST(x.price)}</button><span class="ds">${x.ds}</span></div>`}).join('');
+  const sp=SLOT_PRICE[R.slots],sep=SEAT_PRICE[R.seats];
+  const fixed=`${R.seats<4?`<div class="card"><span class="ic">🪑</span><span><span class="nm">Extra seat</span><br><span class="tag">${R.seats} of 4 seats</span></span><button class="buy" data-act="seat" ${R.wallet<sep?'disabled':''}>${ST(sep)}</button><span class="ds">One more customer can sit and order at a time. More takings, more juggling.</span></div>`:''}
+    ${R.slots<4?`<div class="card"><span class="ic">📜</span><span><span class="nm">Recipe slot</span><br><span class="tag">${R.slots} of 4 slots</span></span><button class="buy" data-act="slot" ${R.wallet<sp?'disabled':''}>${ST(sp)}</button><span class="ds">Room for one more dish on the menu at the next recipe pick.</span></div>`:''}`;
+  const sellBtn=(act,kind,id)=>{const v=sellValue(kind,id);return v?`<button data-act="${act}" data-id="${id}">Sell ${ST(v)}</button>`:`<button data-act="${act}" data-id="${id}">Scrap</button>`};
+  const owned=[
+    ...R.abilities.map(id=>`<span class="own">${ABILITIES[id].e} ${ABILITIES[id].name}${sellBtn('sellab','ability',id)}</span>`),
+    ...Object.keys(R.relics).map(id=>`<span class="own">${RELICS[id].e} ${RELICS[id].name}${sellBtn('sellrel','relic',id)}</span>`),
+    ...Object.keys(R.upg).map(k=>{const[ing,id]=k.split(':');return`<span class="own">${ING[ing].e} ${UPGRADES[id].name}</span>`}),
+  ].join('');
+  const next=DAYS[R.day+1];
+  showScreen(`<div class="eyebrow">Between shifts · Supplier</div><h1>Kitchen shop</h1>
+    ${walletRow()}
+    <div class="cards">${cards}</div>
+    <button class="go alt" data-act="reroll" ${R.wallet<R.reroll?'disabled style="opacity:.5"':''}>${R.reroll?`Reroll stock for ${ST(R.reroll)}`:'Reroll stock (first one free)'}</button>
+    <div class="cards">${fixed}</div>
+    <div><div class="eyebrow">Your kitchen · ${R.seats} seats · ${R.menu.length}/${R.slots} recipes</div>${menuList()}</div>
+    ${owned?`<div class="owned">${owned}</div>`:''}
+    ${cal()}
+    <button class="go" data-act="nextday">On to ${next.name}</button>`);
+}
+scr.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b||b.disabled)return;
+  const act=b.dataset.act;
+  if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)()}catch(_){}}
+  if(act==='title')showTitle();
+  else if(act==='resume')resume();
+  else if(act==='quit'){running=false;paused=false;showTitle()}
+  else if(act==='intro')showIntro();
+  else if(act==='obj'){R.obj=b.dataset.k;showIntro()}
+  else if(act==='start')startShift();
+  else if(act==='draft')showDraft();
+  else if(act==='choose'){
+    const k=b.dataset.k;
+    if(R.menu.length<R.slots){R.menu.push(k);R.draft=null;sfx.cash();showShop()}
+    else{R.draft.chosen=k;showDraft()}
+  }
+  else if(act==='replace'){R.menu[R.menu.indexOf(b.dataset.k)]=R.draft.chosen;R.draft=null;sfx.cash();showShop()}
+  else if(act==='slotadd'){const p=SLOT_PRICE[R.slots];if(R.wallet>=p){R.wallet-=p;R.slots++;R.menu.push(R.draft.chosen);R.draft=null;sfx.cash();showShop()}}
+  else if(act==='skipdraft'){R.draft=null;showShop()}
+  else if(act==='buy'){
+    const o=R.offers[+b.dataset.i],x=info(o);if(R.wallet<x.price)return;
+    R.wallet-=x.price;o.sold=true;sfx.cash();
+    if(o.kind==='ability')R.abilities.push(o.id);else if(o.kind==='relic')R.relics[o.id]=1;else R.upg[o.ing+':'+o.id]=1;
+    showShop();
+  }
+  else if(act==='reroll'){if(R.wallet<R.reroll)return;R.wallet-=R.reroll;R.reroll=1;R.offers=genOffers();showShop()}
+  else if(act==='seat'){const p=SEAT_PRICE[R.seats];if(R.wallet>=p){R.wallet-=p;R.seats++;sfx.cash();showShop()}}
+  else if(act==='slot'){const p=SLOT_PRICE[R.slots];if(R.wallet>=p){R.wallet-=p;R.slots++;sfx.cash();showShop()}}
+  else if(act==='sellab'){const id=b.dataset.id;R.abilities=R.abilities.filter(x=>x!==id);R.wallet+=sellValue('ability',id);showShop()}
+  else if(act==='sellrel'){const id=b.dataset.id;delete R.relics[id];R.wallet+=sellValue('relic',id);showShop()}
+  else if(act==='nextday'){R.day++;R.offers=null;R.objOpts=null;R.obj=null;showIntro()}
+});
+scr.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.card.pick')){e.preventDefault();e.target.click()}});
+
+/* ================= LAYOUT ================= */
+function resize(){
+  const w=Math.min(app.clientWidth-8,440);
+  const rs=getComputedStyle(document.documentElement),bs=getComputedStyle(document.body);
+  const viewH=window.innerHeight-parseFloat(rs.paddingTop)-parseFloat(rs.paddingBottom)-parseFloat(bs.paddingTop)-parseFloat(bs.paddingBottom);
+  const other=app.offsetHeight-boardEl.offsetHeight;
+  TS=Math.max(30,Math.min(Math.floor((w-6)/(COLS+1.25)),Math.floor((viewH-other-2)/ROWS)));
+  document.documentElement.style.setProperty('--s',TS+'px');
+  boardEl.querySelectorAll('.tile').forEach(e=>e.style.transition='none');placeAll();
+  boardEl.offsetHeight;boardEl.querySelectorAll('.tile').forEach(e=>e.style.transition='');
+}
+window.addEventListener('resize',resize);
+document.addEventListener('visibilitychange',()=>{last=performance.now();if(document.hidden)pause()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'||e.key==='p'){paused?resume():pause()}});
+
+/* ================= BOOT ================= */
+showTitle();
+MENU_INGS=menuIngs();TYPES=boardTypes();computeWeights();
+K={time:DAYS[0].len,len:DAYS[0].len,earned:0,orders:[null,null,null,null],queue:[],pantry:{bread:0,cheese:0},grill:[],cd:{},strikes:0,streak:0,viral:0,freezeT:0,criticMult:1};
+fill();renderPantry();renderTickets();renderQueue();renderAbilities();buildGrill();renderHud();resize();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(resize);
+requestAnimationFrame(t=>{last=t;tick(t)});
+</script>
+
+</body>
+</html>
